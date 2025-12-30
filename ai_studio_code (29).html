@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cordeiro - Gradil 20x6 Pro v32</title>
+    <!-- Bibliotecas -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/gitbrent/PptxGenJS@3.12.0/dist/pptxgen.bundle.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700&family=Inter:wght@400;900&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --cor-vermelho: #e30613;
+            --cor-amarelo: #ffcc00;
+            --neon-blue: #00f2ff;
+            --bg-dark: #0a0f1d;
+            --glass: rgba(255, 255, 255, 0.05);
+        }
+
+        body {
+            background: var(--bg-dark);
+            background-image: radial-gradient(circle at top right, #16213e, var(--bg-dark));
+            color: #fff; font-family: 'Inter', sans-serif; margin: 0; padding: 20px;
+        }
+
+        .dashboard { max-width: 1400px; margin: 0 auto; display: grid; grid-template-columns: 480px 1fr; gap: 30px; }
+        .panel {
+            background: var(--glass); backdrop-filter: blur(25px); border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 30px; padding: 30px; box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+        }
+
+        h2 { font-family: 'Orbitron', sans-serif; font-size: 0.9rem; color: var(--neon-blue); letter-spacing: 3px; margin-bottom: 25px; text-transform: uppercase; }
+
+        .input-group { display: flex; flex-direction: column; gap: 15px; }
+        .field { display: flex; flex-direction: column; gap: 6px; }
+        label { font-size: 0.7rem; font-weight: 800; opacity: 0.6; text-transform: uppercase; }
+        
+        input, select {
+            background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.1);
+            padding: 12px; border-radius: 12px; color: white; font-size: 0.9rem;
+        }
+
+        input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1); cursor: pointer; }
+
+        .btn {
+            padding: 14px; border: none; border-radius: 15px; font-weight: 800; cursor: pointer;
+            text-transform: uppercase; font-size: 0.75rem; transition: 0.3s;
+            display: flex; align-items: center; justify-content: center; gap: 10px;
+        }
+        .btn-main { background: linear-gradient(135deg, var(--neon-blue), #bc13fe); color: white; }
+        .btn-pdf { background: #2c3e50; color: white; }
+        .btn-pptx { background: #d33c1d; color: white; }
+
+        .table-area { height: 420px; overflow-y: auto; margin-top: 20px; border-radius: 15px; background: rgba(0,0,0,0.2); }
+        table { width: 100%; border-collapse: collapse; }
+        td, th { padding: 12px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 0.8rem; }
+
+        #preview-modal {
+            display: none; position: fixed; top:0; left:0; width:100%; height:100%;
+            background: rgba(0,0,0,0.95); z-index: 1000; backdrop-filter: blur(15px);
+            flex-direction: column; align-items: center; padding: 20px;
+        }
+        .modal-body { width:100%; overflow-y: auto; display: flex; flex-direction: column; align-items: center; gap: 30px; padding: 40px 0; }
+        .mini-gradil { zoom: 0.45; box-shadow: 0 15px 40px rgba(0,0,0,1); border: 1px solid #fff; margin-bottom: 30px;}
+
+        /* Elementos Técnicos */
+        #ruler { position: absolute; visibility: hidden; white-space: nowrap; font-weight: 900; text-transform: uppercase; }
+        #render-target { 
+            position: absolute; 
+            top: 0; 
+            left: 0; 
+            width: 200mm; 
+            opacity: 0; 
+            z-index: -1; 
+            pointer-events: none;
+            overflow: visible;
+        }
+
+        /* --- ESTRUTURA GRADIL (20x6cm) --- */
+        .gradil-box {
+            width: 200mm; height: 60mm; background: white;
+            display: flex; position: relative; overflow: hidden;
+            box-sizing: border-box; border: 1.5mm solid var(--cor-vermelho);
+            page-break-after: always;
+        }
+
+        .selo-oferta {
+            position: absolute; top: -1px; left: 29%; transform: translateX(-50%);
+            background: var(--cor-vermelho); color: white; padding: 1.5mm 8mm;
+            font-weight: 900; font-size: 24pt; text-transform: uppercase; z-index: 100;
+        }
+
+        .col-desc {
+            width: 58%; height: 100%;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            padding: 18mm 5mm 5mm 5mm; 
+            text-align: center; box-sizing: border-box;
+            position: relative;
+        }
+
+        .col-preco {
+            width: 42%; height: 100%; background: var(--cor-amarelo);
+            box-sizing: border-box; border-left: 1.5mm solid var(--cor-vermelho);
+            padding: 5.5mm 4mm; 
+            display: flex; align-items: center; justify-content: center;
+            overflow: hidden;
+        }
+
+        .price-wrapper {
+            display: flex; justify-content: center; align-items: flex-start;
+            color: var(--cor-vermelho); font-weight: 900; width: 100%; gap: 1mm;
+        }
+
+        #loading-overlay {
+            display: none; position: fixed; top:0; left:0; width:100%; height:100%;
+            background: rgba(0,0,0,0.9); z-index: 10000; justify-content: center; align-items: center; flex-direction: column;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+<div id="loading-overlay">
+    <div style="width: 50px; height: 50px; border: 5px solid var(--neon-blue); border-top-color: transparent; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+    <h3 style="margin-top:20px; font-family:'Orbitron'">GERANDO PDF...</h3>
+</div>
+
+<div id="ruler"></div>
+
+<div class="dashboard">
+    <div class="panel">
+        <h2><span>⚡</span> Criar Gradil</h2>
+        <div class="input-group">
+            <div class="field"><label>Descrição do Produto</label><input type="text" id="inDesc" placeholder="Farinha de trigo Vilma 500g"></div>
+            <div class="field"><label>Preço</label><input type="text" id="inPreco" placeholder="6,98"></div>
+            <div class="field">
+                <label>Fonte PC</label>
+                <div style="display:flex; gap:5px">
+                    <select id="selFont" style="flex:1"><option value="Arial Black">Arial Black</option></select>
+                    <button class="btn btn-outline" style="padding:10px" onclick="syncFonts()">🔄</button>
+                </div>
+            </div>
+        </div>
+        <div class="row" style="margin-top:20px; display: grid; grid-template-columns: 1fr 1fr; gap:10px;">
+            <button class="btn btn-main" onclick="addToList()">💾 Salvar</button>
+            <button class="btn btn-outline" onclick="downloadModelo()">📥 Modelo</button>
+        </div>
+        <button class="btn btn-outline" style="width:100%; margin-top:10px" onclick="document.getElementById('fileIn').click()">📤 Importar Excel</button>
+        <input type="file" id="fileIn" hidden accept=".xlsx" onchange="importXls(event)">
+    </div>
+
+    <div class="panel">
+        <h2><span>📋</span> Lista 20x6cm</h2>
+        <div class="table-area">
+            <table id="itTable">
+                <thead><tr><th>Produto</th><th>Preço</th><th>Ações</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-top:15px">
+            <button class="btn btn-outline" onclick="openPreview()">👁️ Preview</button>
+            <button class="btn btn-pdf" onclick="gerarPDF()">📄 Exportar PDF</button>
+            <button class="btn btn-pptx" style="grid-column: span 2;" onclick="exportPPTX()">📊 Baixar .PPTX</button>
+        </div>
+    </div>
+</div>
+
+<div id="preview-modal">
+    <div style="width:90%; display:flex; justify-content:space-between; align-items:center; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom:15px;">
+        <h3 style="font-family:'Orbitron'; color:var(--neon-blue)">CHECK DE CONTEÚDO</h3>
+        <button class="btn btn-danger" onclick="closePreview()">FECHAR</button>
+    </div>
+    <div class="modal-body" id="modal-content"></div>
+</div>
+
+<div id="render-target"></div>
+
+<script>
+    let produtos = [];
+    let editIdx = -1;
+
+    async function syncFonts() {
+        if (!window.queryLocalFonts) return alert("Use Chrome ou Edge.");
+        const fonts = await window.queryLocalFonts();
+        const sel = document.getElementById('selFont');
+        sel.innerHTML = "";
+        [...new Set(fonts.map(f => f.family))].sort().forEach(f => sel.add(new Option(f, f)));
+    }
+
+    // CORREÇÃO: Função que garante que NENHUMA informação seja perdida
+    function processDescGradil(text, font) {
+        const ruler = document.getElementById('ruler');
+        ruler.style.fontFamily = font;
+        ruler.style.fontSize = "54pt"; 
+        
+        const words = text.toUpperCase().split(' ');
+        let line1 = "";
+        let line2 = "";
+        let rest = "";
+        let currentIdx = 0;
+        let maxWidth = 400; 
+
+        // Linha 1 em 54pt
+        while(currentIdx < words.length) {
+            let test = line1 + (line1 ? " " : "") + words[currentIdx];
+            ruler.textContent = test;
+            if(ruler.offsetWidth > maxWidth) break;
+            line1 = test;
+            currentIdx++;
+        }
+
+        // Linha 2 em 54pt
+        while(currentIdx < words.length) {
+            let test = line2 + (line2 ? " " : "") + words[currentIdx];
+            ruler.textContent = test;
+            if(ruler.offsetWidth > maxWidth) break;
+            line2 = test;
+            currentIdx++;
+        }
+
+        // TODO O RESTO em 36pt (Sem limites, para não perder informação)
+        if(currentIdx < words.length) {
+            rest = words.slice(currentIdx).join(' ');
+        }
+
+        let html = `<div style="font-size: 54pt; line-height: 0.85; font-weight: 900; color: #000;">${line1}${line2 ? '<br>'+line2 : ''}</div>`;
+        if (rest) {
+            html += `<div style="font-size: 36pt; line-height: 0.9; font-weight: 900; margin-top: 2mm; color: #000;">${rest}</div>`;
+        }
+        return html;
+    }
+
+    function getPriceScale(realPart) {
+        let baseReal = 140; 
+        let baseCent = 40;
+        let baseMargin = 6;
+        const digits = realPart.replace(/\D/g, '').length;
+        if (digits >= 4) {
+            baseReal *= 0.9;
+            baseCent *= 0.9;
+            baseMargin *= 0.9;
+        }
+        return { r: baseReal + "pt", c: baseCent + "pt", m: baseMargin + "mm" };
+    }
+
+    function addToList() {
+        const desc = document.getElementById('inDesc').value;
+        const preco = document.getElementById('inPreco').value;
+        if(!desc || !preco) return;
+        if(editIdx > -1) { produtos[editIdx] = { desc, preco }; editIdx = -1; }
+        else { produtos.push({ desc, preco }); }
+        document.getElementById('inDesc').value = ""; document.getElementById('inPreco').value = "";
+        renderTable();
+    }
+
+    function renderTable() {
+        const tb = document.querySelector("#itTable tbody");
+        tb.innerHTML = produtos.map((it, i) => `<tr><td>${it.desc}</td><td>R$ ${it.preco}</td>
+        <td><button class="btn btn-outline" onclick="editIt(${i})">✏️</button>
+        <button class="btn btn-danger" onclick="delIt(${i})">🗑️</button></td></tr>`).join('');
+    }
+
+    function delIt(i) { produtos.splice(i,1); renderTable(); }
+    function editIt(i) {
+        const it = produtos[i];
+        document.getElementById('inDesc').value = it.desc;
+        document.getElementById('inPreco').value = it.preco;
+        editIdx = i;
+    }
+
+    function buildGradil(it, font) {
+        const p = it.preco.split(',');
+        const real = p[0];
+        const cent = p[1] || "00";
+        const scale = getPriceScale(real);
+        
+        return `
+            <div class="gradil-box" style="font-family:'${font}';">
+                <div class="selo-oferta">OFERTA</div>
+                <div class="col-desc">
+                    <div style="width: 100%;">${processDescGradil(it.desc, font)}</div>
+                </div>
+                <div class="col-preco">
+                    <div class="price-wrapper" style="display:flex; justify-content:center; align-items:flex-start; color:var(--cor-vermelho); font-weight:900; width:100%; gap:1mm;">
+                        <span style="font-size: ${scale.r}; line-height: 0.72; letter-spacing: -6px; white-space:nowrap;">${real}</span>
+                        <span style="font-size: ${scale.c}; line-height: 1; margin-top: ${scale.m};">,${cent}</span>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    // CORREÇÃO: Gerador de PDF Robusto
+    async function gerarPDF() {
+        if(produtos.length === 0) return;
+        document.getElementById('loading-overlay').style.display = "flex";
+        
+        const target = document.getElementById('render-target');
+        const font = document.getElementById('selFont').value;
+        target.innerHTML = "";
+        
+        // Montamos todas as páginas no container invisível
+        produtos.forEach(it => {
+            const div = document.createElement('div');
+            div.innerHTML = buildGradil(it, font);
+            target.appendChild(div);
+        });
+
+        const opt = {
+            margin: 0,
+            filename: 'Gradis_Oficiais_Cordeiro.pdf',
+            image: { type: 'jpeg', quality: 1 },
+            html2canvas: { 
+                scale: 3, 
+                useCORS: true,
+                scrollX: 0, 
+                scrollY: 0,
+                windowWidth: 1200 
+            },
+            jsPDF: { unit: 'mm', format: [200, 60], orientation: 'landscape' }
+        };
+
+        // Pequeno atraso para o navegador processar a montagem do DOM
+        setTimeout(async () => {
+            try {
+                await html2pdf().set(opt).from(target).save();
+            } finally {
+                document.getElementById('loading-overlay').style.display = "none";
+                target.innerHTML = "";
+            }
+        }, 1000);
+    }
+
+    function exportPPTX() {
+        if(produtos.length === 0) return;
+        let pptx = new PptxGenJS();
+        const font = document.getElementById('selFont').value;
+        pptx.defineLayout({ name:'GRADIL', width: 7.87, height: 2.36 });
+        pptx.layout = 'GRADIL';
+
+        produtos.forEach(it => {
+            let slide = pptx.addSlide();
+            slide.addShape(pptx.ShapeType.rect, { x:0, y:0, w:7.87, h:2.36, line:{color:'E30613', width:6}, fill:{color:'FFFFFF'} });
+            slide.addShape(pptx.ShapeType.rect, { x:4.55, y:0, w:3.32, h:2.36, fill:{color:'FFCC00'}, line:{color:'E30613', width:6} });
+            slide.addText("OFERTA", { x: 1.25, y: 0, w: 2.2, h: 0.6, align: "center", fill: "E30613", color: "FFFFFF", fontSize: 24, bold: true, fontFace: font });
+
+            const p = it.preco.split(',');
+            slide.addText(it.desc.toUpperCase(), {
+                x: 0.2, y: 0.7, w: 4.2, h: 1.4, align: "center",
+                fontSize: it.desc.length > 25 ? 24 : 34, bold: true, color: "000000", fontFace: font
+            });
+
+            slide.addText(p[0], { x: 4.7, y: 0.1, w: 2.2, h: 2.1, align: p[0].length > 3 ? "center" : "right", fontSize: 130, bold: true, color: "E30613", fontFace: font });
+            slide.addText("," + (p[1]||'00'), { x: 7.0, y: 0.35, w: 0.8, h: 1.0, align: "left", fontSize: 40, bold: true, color: "E30613", fontFace: font });
+        });
+        pptx.writeFile({ fileName: "Gradis_Cordeiro.pptx" });
+    }
+
+    function openPreview() {
+        const cont = document.getElementById('modal-content');
+        cont.innerHTML = "";
+        document.getElementById('preview-modal').style.display = "flex";
+        produtos.forEach(it => {
+            const div = document.createElement('div');
+            div.className = "mini-gradil";
+            div.innerHTML = buildGradil(it, document.getElementById('selFont').value);
+            cont.appendChild(div);
+        });
+    }
+
+    function closePreview() { document.getElementById('preview-modal').style.display = "none"; }
+
+    function downloadModelo() {
+        const ws = XLSX.utils.aoa_to_sheet([["descricao", "preco"], ["FARINHA DE TRIGO VILMA 500G", "6,98"]]);
+        const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Modelo");
+        XLSX.writeFile(wb, "modelo_gradil.xlsx");
+    }
+
+    function importXls(e) {
+        const reader = new FileReader();
+        reader.onload = ev => {
+            const data = XLSX.utils.sheet_to_json(XLSX.read(new Uint8Array(ev.target.result), {type:'array'}).Sheets[XLSX.read(new Uint8Array(ev.target.result), {type:'array'}).SheetNames[0]]);
+            data.forEach(r => produtos.push({ desc: r.descricao, preco: String(r.preco) }));
+            renderTable();
+        };
+        reader.readAsArrayBuffer(e.target.files[0]);
+    }
+</script>
+</body>
+</html>
